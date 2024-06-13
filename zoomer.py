@@ -23,9 +23,11 @@ class RandomScatterPlotDialog(QDialog):
 
         self.generateRandomData()
 
-    def generateRandomData(self):
-        x = np.random.rand(1000)
-        y = np.random.rand(1000)
+    def generateRandomData(self,x=None,y=None):
+        self.plotWidget.clear()
+        if x is None:
+            x = np.random.rand(1000)
+            y = np.random.rand(1000)
         self.plotWidget.plot(x, y, pen=None, symbol='o', symbolSize=5)
 
 class MyApp(QWidget):
@@ -210,6 +212,31 @@ class MyApp(QWidget):
 
     def showRandomScatterPlot(self):
         dialog = RandomScatterPlotDialog()
+        
+        
+        peaks=[]
+        prevtime=0
+        tmp=[]
+        for i in range(1,len(self.xtime)):
+            time = self.xtime[i]
+            fluo = self.xfluo[i]
+            if int((time-prevtime)*1000) > int(self.acqtime*1000):
+                if len(tmp)>1:
+                    peaks.append(np.array(tmp))
+                    tmp=[]                    
+            else:                
+                tmp.append([time,fluo])        
+            prevtime = time
+        
+        intensity= []
+        duration = []
+        for p in peaks:
+            intensity.append(np.max(p[:,1]))
+            duration.append(p[-1,0]-p[0,0])
+        dialog.generateRandomData(duration,intensity)
+        
+        
+        
         dialog.exec_()
 
     def prevWindow(self):
@@ -244,7 +271,6 @@ class MyApp(QWidget):
         self.xtime = np.array(time)[block]
         self.xfluo = np.array(fluo)[block]
         self.xpmt = np.array(pmt)[block]
-        
         
         self.line1.setData(self.xtime, self.xfluo)
         self.fit1.setData(self.xtime,savgol(self.xfluo,win,1))

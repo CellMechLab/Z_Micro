@@ -213,6 +213,9 @@ class MyApp(QWidget):
     def showRandomScatterPlot(self):
         dialog = RandomScatterPlotDialog()
         
+        win = self.winSpinBox.value()
+        if win%2 == 0:
+            win+=1
         
         peaks=[]
         prevtime=0
@@ -231,7 +234,7 @@ class MyApp(QWidget):
         intensity= []
         duration = []
         for p in peaks:
-            intensity.append(np.max(p[:,1]))
+            intensity.append(np.max(savgol(p[:,1],win,1)))
             duration.append(p[-1,0]-p[0,0])
         dialog.generateRandomData(duration,intensity)
         

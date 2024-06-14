@@ -224,7 +224,7 @@ class MyApp(QWidget):
             time = self.xtime[i]
             fluo = self.xfluo[i]
             if int((time-prevtime)*1000) > int(self.acqtime*1000):
-                if len(tmp)>1:
+                if len(tmp)>win:
                     peaks.append(np.array(tmp))
                     tmp=[]                    
             else:                

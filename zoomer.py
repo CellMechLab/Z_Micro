@@ -17,8 +17,10 @@ class RandomScatterPlotDialog(QDialog):
         layout = QVBoxLayout()
 
         self.plotWidget = pg.PlotWidget()
+        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode)
         layout.addWidget(self.plotWidget)
-
+        self.plotWidget.setLabel('left','Intensity [a.u.]')
+        self.plotWidget.setLabel('bottom','Duration [us]')
         self.setLayout(layout)
 
         self.generateRandomData()
@@ -29,6 +31,7 @@ class RandomScatterPlotDialog(QDialog):
             x = np.random.rand(1000)
             y = np.random.rand(1000)
         self.plotWidget.plot(x, y, pen=None, symbol='o', symbolSize=5)
+        
 
 class MyApp(QWidget):
     def __init__(self):
@@ -36,6 +39,7 @@ class MyApp(QWidget):
         self.initUI()
         self.loaded = False
         self.finished=False
+        self.inmemory = False
         
     def initUI(self):
         self.setWindowTitle('AMK data analyser')
@@ -102,6 +106,8 @@ class MyApp(QWidget):
 
         self.plotWidget1 = pg.PlotWidget(title="Intensity vs Time")
         self.plotWidget2 = pg.PlotWidget(title="PMT vs Time")
+        self.plotWidget1.getViewBox().setMouseMode(pg.ViewBox.RectMode)
+        self.plotWidget2.getViewBox().setMouseMode(pg.ViewBox.RectMode)
         
         self.plotWidget1.getViewBox().sigXRangeChanged.connect(lambda vb, range: self.on_xrange_changed(self.plotWidget1.getAxis('bottom'), range))
         self.plotWidget2.getViewBox().sigXRangeChanged.connect(lambda vb, range: self.on_xrange_changed(self.plotWidget2.getAxis('bottom'), range))
@@ -141,12 +147,12 @@ class MyApp(QWidget):
         self.loaded = True
         
         self.plotWidget1.clear()
-        self.line1 = self.plotWidget1.plot([], [], pen='w',symbol='o',symbolSize=3)
-        self.fit1  = self.plotWidget1.plot([], [], pen='g')
-        self.threshline = self.plotWidget1.plot([], [], pen='r')
+        self.line1 = self.plotWidget1.plot([], [], pen='y',symbol='o',symbolSize=3)
+        self.fit1  = self.plotWidget1.plot([], [], pen='r')
+        self.threshline = self.plotWidget1.plot([], [], pen='b')
         self.plotWidget2.clear()        
-        self.line2 = self.plotWidget2.plot([], [], pen='w',symbol='o',symbolSize=3)
-        self.fit2 = self.plotWidget2.plot([], [], pen='g')
+        self.line2 = self.plotWidget2.plot([], [], pen='y',symbol='o',symbolSize=3)
+        self.fit2 = self.plotWidget2.plot([], [], pen='r')
         
         self.updatePlot()
 
@@ -216,30 +222,27 @@ class MyApp(QWidget):
         win = self.winSpinBox.value()
         if win%2 == 0:
             win+=1
-        
-        peaks=[]
-        prevtime=0
-        tmp=[]
-        for i in range(1,len(self.xtime)):
-            time = self.xtime[i]
-            fluo = self.xfluo[i]
-            if int((time-prevtime)*1000) > int(self.acqtime*1000):
-                if len(tmp)>win:
-                    peaks.append(np.array(tmp))
-                    tmp=[]                    
-            else:                
-                tmp.append([time,fluo])        
-            prevtime = time
-        
-        intensity= []
-        duration = []
-        for p in peaks:
-            intensity.append(np.max(savgol(p[:,1],win,1)))
-            duration.append(p[-1,0]-p[0,0])
-        dialog.generateRandomData(duration,intensity)
-        
-        
-        
+            
+        if self.finished is True:        
+            peaks=[]
+            prevtime=0
+            tmp=[]
+            for i in range(1,len(self.xtime)):
+                time = self.xtime[i]
+                fluo = self.xfluo[i]
+                if int((time-prevtime)*1000) > int(self.acqtime*1000):
+                    if len(tmp)>win:
+                        peaks.append(np.array(tmp))
+                        tmp=[]                    
+                else:                
+                    tmp.append([time,fluo])        
+                prevtime = time
+            intensity= []
+            duration = []
+            for p in peaks:
+                intensity.append(np.max(savgol(p[:,1],win,1)))
+                duration.append((p[-1,0]-p[0,0])*1000)
+            dialog.generateRandomData(duration,intensity)
         dialog.exec_()
 
     def prevWindow(self):
@@ -255,25 +258,28 @@ class MyApp(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)     
         self.loaded=False        
         self.finished=True
-        f = open(self.filename)
-        fluo=[]
-        pmt=[]
-        time=[]
-        f.readline()
-        for riga in f:
-            tmptime,tmpfluo,tmppmt=[float(number) for number in riga.strip().split(',')[:3]]
-            time.append(tmptime)
-            fluo.append(tmpfluo)
-            pmt.append(tmppmt)
-        f.close()        
-        filtered = savgol(fluo,win,1)
+        if self.inmemory is False:
+            f = open(self.filename)
+            self.memfluo=[]
+            self.mempmt=[]
+            self.memtime=[]
+            f.readline()
+            for riga in f:
+                tmptime,tmpfluo,tmppmt=[float(number) for number in riga.strip().split(',')[:3]]
+                self.memtime.append(tmptime)
+                self.memfluo.append(tmpfluo)
+                self.mempmt.append(tmppmt)
+            f.close()   
+            self.inmemory = True    
+             
+        filtered = savgol(self.memfluo,win,1)
         threshold = self.thresholdSpinBox.value()
-        
+    
         block = np.where(filtered>threshold)
         
-        self.xtime = np.array(time)[block]
-        self.xfluo = np.array(fluo)[block]
-        self.xpmt = np.array(pmt)[block]
+        self.xtime = np.array(self.memtime)[block]
+        self.xfluo = np.array(self.memfluo)[block]
+        self.xpmt = np.array(self.mempmt)[block]
         
         self.line1.setData(self.xtime, self.xfluo)
         self.fit1.setData(self.xtime,savgol(self.xfluo,win,1))

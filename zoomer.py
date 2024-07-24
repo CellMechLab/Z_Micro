@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from scipy.signal import savgol_filter as savgol
 import pyqtgraph as pg
+import csv
 
 class RandomScatterPlotDialog(QDialog):
     def __init__(self):
@@ -40,6 +41,7 @@ class MyApp(QWidget):
         self.loaded = False
         self.finished=False
         self.inmemory = False
+        self.duration,self.intensity = [],[]
         
     def initUI(self):
         self.setWindowTitle('AMK data analyser')
@@ -94,6 +96,11 @@ class MyApp(QWidget):
         self.nextButton = QPushButton('Isolate', self)
         self.nextButton.clicked.connect(self.nextWindow)
         controlLayout.addWidget(self.nextButton)
+        
+        self.saveButton = QPushButton('Save CSV', self)
+        self.saveButton.clicked.connect(self.saveData)
+        controlLayout.addWidget(self.saveButton)
+        
 
         layout.addLayout(controlLayout)
         
@@ -121,9 +128,30 @@ class MyApp(QWidget):
         filePath, _ = QFileDialog.getOpenFileName(self, 'Open CSV', '', 'CSV Files (*.csv);;All Files (*)')
         if filePath:
             self.filename= filePath
+            self.loaded = False
+            self.finished=False
+            self.inmemory = False
             self.loadAndPlotData()
+            
+    def saveData(self):        
+        defaultName = self.filename.rsplit('.', 1)[0] + '_processed.csv'
+        filePath, _ = QFileDialog.getSaveFileName(self, 'Save CSV', defaultName, 'CSV Files (*.csv);;All Files (*)')
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        if not filePath:
+            return
+        if self.finished is False: 
+            QMessageBox.warning(self, 'Warning', 'Please so isolate the peaks first.')
+            return
+        if len(self.duration) == 0:
+            self.calculateFeatures()
+        with open(filePath, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            for duration, intensity in zip(self.duration, self.intensity):
+                csvwriter.writerow([duration, intensity])
+        QApplication.restoreOverrideCursor()
+        QMessageBox.information(self, 'Data Saved', f'Data successfully saved to {filePath}.')
 
-    def loadAndPlotData(self):
+    def loadAndPlotData(self):        
         QApplication.setOverrideCursor(Qt.WaitCursor)
         self.line_offset = []
         f = open(self.filename)
@@ -142,9 +170,9 @@ class MyApp(QWidget):
         self.sliding.setMaximum(self.number-N-1)   
         QApplication.restoreOverrideCursor()
         QMessageBox.information(self, 'File loaded', f'File {self.filename} opened.\nA total of {self.number} lines has been read.\nTotal acquisition time of the track: {int(endtime/10)/100}s\nAcquisition time {int(self.acqtime*1e5)/100}us')
-        self.updatePlot()
+        
         self.messageLabel.setText(f'Loaded file: {self.filename}')        
-        self.loaded = True
+        
         
         self.plotWidget1.clear()
         self.line1 = self.plotWidget1.plot([], [], pen='y',symbol='o',symbolSize=3)
@@ -154,7 +182,9 @@ class MyApp(QWidget):
         self.line2 = self.plotWidget2.plot([], [], pen='y',symbol='o',symbolSize=3)
         self.fit2 = self.plotWidget2.plot([], [], pen='r')
         
+        self.loaded = True
         self.updatePlot()
+        
 
     def sizeChanged(self):
         if self.loaded is False:
@@ -215,34 +245,37 @@ class MyApp(QWidget):
         #self.plotWidget2.autoRange()
         self.loaded=True
         
-
-    def showRandomScatterPlot(self):
-        dialog = RandomScatterPlotDialog()
-        
+    def calculateFeatures(self):
         win = self.winSpinBox.value()
         if win%2 == 0:
             win+=1
+        peaks=[]
+        prevtime=0
+        tmp=[]
+        for i in range(1,len(self.xtime)):
+            time = self.xtime[i]
+            fluo = self.xfluo[i]
+            if int((time-prevtime)*1000) > int(self.acqtime*1000):
+                if len(tmp)>win:
+                    peaks.append(np.array(tmp))
+                    tmp=[]                    
+            else:                
+                tmp.append([time,fluo])        
+            prevtime = time
+        intensity= []
+        duration = []
+        for p in peaks:
+            intensity.append(np.max(savgol(p[:,1],win,1)))
+            duration.append((p[-1,0]-p[0,0])*1000)            
+        self.duration,self.intensity = duration,intensity
+
+    def showRandomScatterPlot(self):
+        dialog = RandomScatterPlotDialog()        
             
         if self.finished is True:        
-            peaks=[]
-            prevtime=0
-            tmp=[]
-            for i in range(1,len(self.xtime)):
-                time = self.xtime[i]
-                fluo = self.xfluo[i]
-                if int((time-prevtime)*1000) > int(self.acqtime*1000):
-                    if len(tmp)>win:
-                        peaks.append(np.array(tmp))
-                        tmp=[]                    
-                else:                
-                    tmp.append([time,fluo])        
-                prevtime = time
-            intensity= []
-            duration = []
-            for p in peaks:
-                intensity.append(np.max(savgol(p[:,1],win,1)))
-                duration.append((p[-1,0]-p[0,0])*1000)
-            dialog.generateRandomData(duration,intensity)
+            self.calculateFeatures()
+            dialog.generateRandomData(self.duration,self.intensity)
+            
         dialog.exec_()
 
     def prevWindow(self):

@@ -249,6 +249,7 @@ class MyApp(QWidget):
         win = self.winSpinBox.value()
         if win%2 == 0:
             win+=1
+        miniwin = 10
         peaks=[]
         prevtime=0
         tmp=[]
@@ -256,7 +257,7 @@ class MyApp(QWidget):
             time = self.xtime[i]
             fluo = self.xfluo[i]
             if int((time-prevtime)*1000) > int(self.acqtime*1000):
-                if len(tmp)>win:
+                if len(tmp)>miniwin:
                     peaks.append(np.array(tmp))
                     tmp=[]                    
             else:                

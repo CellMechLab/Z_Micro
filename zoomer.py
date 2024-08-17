@@ -2,7 +2,7 @@ import sys
 import numpy as np
 from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QFileDialog,
-    QLabel, QSpinBox, QSlider, QMessageBox, QDialog
+    QLabel, QSpinBox, QSlider, QMessageBox, QDialog, QSizePolicy
 )
 from PySide6.QtCore import Qt
 from scipy.signal import savgol_filter as savgol
@@ -16,23 +16,62 @@ class RandomScatterPlotDialog(QDialog):
         self.setGeometry(200, 200, 600, 400)
 
         layout = QVBoxLayout()
-
+        
+        innerlayout = QHBoxLayout()
         self.plotWidget = pg.PlotWidget()
-        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode)
-        layout.addWidget(self.plotWidget)
+        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode)        
         self.plotWidget.setLabel('left','Intensity [a.u.]')
         self.plotWidget.setLabel('bottom','Duration [us]')
+        self.graphWidget = pg.PlotWidget()
+        self.graphWidget.setLabel('left','Intensity [a.u.]')
+        self.graphWidget.setLabel('bottom','Time [us]')        
+        innerlayout.addWidget(self.plotWidget)
+        innerlayout.addWidget(self.graphWidget)
+        
+        lowelayout = QHBoxLayout()
+        self.selectedpeak = QSlider(Qt.Orientation.Horizontal)
+        self.selectedpeak.setMinimum(0)
+        self.selectedpeak.setMaximum(100)
+        self.selectedpeak.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        lowelayout.addWidget(self.selectedpeak)
+        lowelayout.addWidget(QLabel('Duration [us]:'))
+        self.Lduration = QLabel('n/a')
+        lowelayout.addWidget(self.Lduration)
+        lowelayout.addWidget(QLabel('Intensity [a.u.]:'))
+        self.Lpeak = QLabel('n/a')
+        lowelayout.addWidget(self.Lpeak) 
+        
+        layout.addLayout(innerlayout)
+        layout.addLayout(lowelayout)       
+        
         self.setLayout(layout)
-
+        self.peaks=[]
         self.generateRandomData()
 
-    def generateRandomData(self,x=None,y=None):
+    def generateRandomData(self,x=None,y=None,data=None):
         self.plotWidget.clear()
+        self.graphWidget.clear()        
         if x is None:
             x = np.random.rand(1000)
             y = np.random.rand(1000)
+        self.selectedpeak.setMaximum(len(x)-1)
+        self.x,self.y=x,y
+        self.peaks=data
         self.plotWidget.plot(x, y, pen=None, symbol='o', symbolSize=5)
+        self.point = self.plotWidget.plot([x[0]],[y[0]],pen=None, symbol='o', symbolSize=5, symbolBrush='orange')
+        self.selectedpeak.setValue(0)
+        self.selectedpeak.valueChanged.connect(self.updatePoint)
+        self.updatePoint()
         
+    def updatePoint(self,value=0):
+        # Update the point based on the selected peak value
+        if self.peaks is not None:
+            peak = self.peaks[value]
+            self.graphWidget.clear()
+            self.graphWidget.plot(peak[:,0],peak[:,1], pen='y',symbol='o',symbolSize=3)    
+        self.point.setData([self.x[value]], [self.y[value]])  # Assuming peaks is a list of (x, y) tuples    
+        self.Lpeak.setText(f'{int(self.y[value])}')
+        self.Lduration.setText(f'{int(self.x[value])}')
 
 class MyApp(QWidget):
     def __init__(self):
@@ -42,6 +81,7 @@ class MyApp(QWidget):
         self.finished=False
         self.inmemory = False
         self.duration,self.intensity = [],[]
+        self.safepeaks = []
         
     def initUI(self):
         self.setWindowTitle('AMK data analyser')
@@ -93,9 +133,9 @@ class MyApp(QWidget):
         self.prevButton.clicked.connect(self.prevWindow)
         controlLayout.addWidget(self.prevButton)
 
-        self.nextButton = QPushButton('Isolate', self)
-        self.nextButton.clicked.connect(self.nextWindow)
-        controlLayout.addWidget(self.nextButton)
+        self.isolateButton = QPushButton('Isolate', self)
+        self.isolateButton.clicked.connect(self.isolatePeaks)
+        controlLayout.addWidget(self.isolateButton)
         
         self.saveButton = QPushButton('Save CSV', self)
         self.saveButton.clicked.connect(self.saveData)
@@ -140,7 +180,7 @@ class MyApp(QWidget):
         if not filePath:
             return
         if self.finished is False: 
-            QMessageBox.warning(self, 'Warning', 'Please so isolate the peaks first.')
+            QMessageBox.warning(self, 'Warning', 'Please do isolate the peaks first.')
             return
         if len(self.duration) == 0:
             self.calculateFeatures()
@@ -258,7 +298,7 @@ class MyApp(QWidget):
             if int((time-prevtime)*1000) > int(self.acqtime*1000):
                 if len(tmp)>win:
                     peaks.append(np.array(tmp))
-                    tmp=[]                    
+                tmp=[]                    
             else:                
                 tmp.append([time,fluo])        
             prevtime = time
@@ -268,13 +308,14 @@ class MyApp(QWidget):
             intensity.append(np.max(savgol(p[:,1],win,1)))
             duration.append((p[-1,0]-p[0,0])*1000)            
         self.duration,self.intensity = duration,intensity
+        self.safepeaks = peaks
 
     def showRandomScatterPlot(self):
         dialog = RandomScatterPlotDialog()        
             
         if self.finished is True:        
             self.calculateFeatures()
-            dialog.generateRandomData(self.duration,self.intensity)
+            dialog.generateRandomData(self.duration,self.intensity,self.safepeaks)
             
         dialog.exec_()
 
@@ -284,7 +325,7 @@ class MyApp(QWidget):
         self.plotWidget1.autoRange()
         self.plotWidget2.autoRange()
 
-    def nextWindow(self):
+    def isolatePeaks(self):
         win = self.winSpinBox.value()
         if win%2 == 0:
             win+=1

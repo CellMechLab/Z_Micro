@@ -2,8 +2,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
 
-def plot_violin_and_error(csv_file_path, threshold=50):
+def plot_violin_and_error(threshold=50):
+    # Hide the root window of tkinter
+    Tk().withdraw()
+    
+    # Open file dialog to select the CSV file
+    csv_file_path = askopenfilename(
+        filetypes=[("CSV files", "*.csv")],
+        title="Select CSV File"
+    )
+    
+    if not csv_file_path:
+        print("No file selected.")
+        return
+
     # Load the CSV file
     df = pd.read_csv(csv_file_path)
 
@@ -52,9 +67,7 @@ def plot_violin_and_error(csv_file_path, threshold=50):
     plt.xticks(x_values, cleaned_df.columns, rotation=45)
     plt.grid(True)
     plt.legend()
-    
+    plt.show()
 
-# Usage example
-csv_file_path = 'test.csv'  # Replace with your CSV file path
-plot_violin_and_error(csv_file_path, threshold=50)
-plt.show()
+# Execute the function to select the file and plot the data
+plot_violin_and_error(threshold=50)

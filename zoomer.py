@@ -182,8 +182,8 @@ class MyApp(QWidget):
         if self.finished is False: 
             QMessageBox.warning(self, 'Warning', 'Please do isolate the peaks first.')
             return
-        if len(self.duration) == 0:
-            self.calculateFeatures()
+        #if len(self.duration) == 0:
+        self.calculateFeatures()
         with open(filePath, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             for duration, intensity in zip(self.duration, self.intensity):
